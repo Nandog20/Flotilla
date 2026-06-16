@@ -1,0 +1,29 @@
+# Entornos virtuales (Virtual Environments)
+venv/
+.venv/
+env/
+.env/
+
+# Caché de Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Base de datos local (SQLite)
+*.db
+*.sqlite
+*.sqlite3
+flotilla.db
+
+# Compilación y empaquetado (PyInstaller)
+build/
+dist/
+*.spec
+
+# Configuraciones de editores (VS Code, PyCharm, etc.)
+.vscode/
+.idea/
+
+# Archivos temporales del sistema operativo
+.DS_Store
+Thumbs.db
