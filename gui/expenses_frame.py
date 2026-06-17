@@ -1,17 +1,15 @@
-"""
-Pantalla 6 — Gastos (placeholder).
-Se implementará completamente en la siguiente fase de desarrollo.
-"""
-
 import customtkinter as ctk
-
+from tkinter import messagebox
+import datetime
+import database
+from gui.dialogs import ExpenseDialog
 
 class ExpensesFrame(ctk.CTkFrame):
     def __init__(self, parent, controller):
         super().__init__(parent, fg_color="transparent")
         self.controller = controller
 
-        self.grid_rowconfigure(1, weight=1)
+        self.grid_rowconfigure(2, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
         # ---- Barra superior ----
@@ -33,19 +31,133 @@ class ExpensesFrame(ctk.CTkFrame):
             font=ctk.CTkFont(size=22, weight="bold"),
         ).grid(row=0, column=1, sticky="w", padx=10)
 
-        # ---- Contenido placeholder ----
-        content = ctk.CTkFrame(self)
-        content.grid(row=1, column=0, sticky="nsew", padx=15, pady=(8, 15))
-        content.grid_rowconfigure(0, weight=1)
-        content.grid_columnconfigure(0, weight=1)
+        ctk.CTkButton(
+            top, text="✚ Registrar Gasto",
+            width=140, height=35,
+            fg_color="#10B981", hover_color="#059669",
+            font=ctk.CTkFont(weight="bold"),
+            command=self._open_add,
+        ).grid(row=0, column=2, sticky="e")
 
-        ctk.CTkLabel(
-            content,
-            text="🚧\n\nMódulo en Desarrollo\n\nEl registro de gastos\nestará disponible próximamente.",
-            font=ctk.CTkFont(size=16),
-            text_color="gray",
-            justify="center",
-        ).grid(row=0, column=0)
+        # ---- Barra de búsqueda ----
+        search_bar = ctk.CTkFrame(self, corner_radius=8)
+        search_bar.grid(row=1, column=0, sticky="ew", padx=15, pady=(5, 10))
+        search_bar.grid_columnconfigure(0, weight=1)
 
+        self.entry_search = ctk.CTkEntry(
+            search_bar,
+            placeholder_text="🔍  Buscar por vehículo, categoría, concepto...",
+            height=38,
+        )
+        self.entry_search.grid(row=0, column=0, padx=12, pady=10, sticky="ew")
+        self.entry_search.bind("<Return>", lambda _: self.refresh())
+
+        ctk.CTkButton(
+            search_bar, text="Buscar", width=90,
+            command=self.refresh,
+        ).grid(row=0, column=1, padx=(0, 12), pady=10)
+
+        # ---- Contenedor de tabla ----
+        table_container = ctk.CTkFrame(self)
+        table_container.grid(row=2, column=0, sticky="nsew", padx=15, pady=(0, 12))
+
+        self.table_scroll = ctk.CTkScrollableFrame(table_container)
+        self.table_scroll.pack(fill="both", expand=True, padx=6, pady=6)
+
+    # -----------------------------------------------------------------
     def refresh(self):
-        pass
+        for w in self.table_scroll.winfo_children():
+            w.destroy()
+
+        headers = ["Vehículo", "Categoría", "Concepto", "Monto", "Fecha", "Acciones"]
+        self._draw_header(headers)
+
+        query = self.entry_search.get()
+        rows = database.get_expenses(self.controller.current_admin_id, query)
+
+        if not rows:
+            ctk.CTkLabel(
+                self.table_scroll, text="No se encontraron gastos.",
+                font=ctk.CTkFont(size=14, slant="italic"), text_color="gray",
+            ).pack(pady=40)
+            return
+
+        for idx, e in enumerate(rows):
+            # e = (id, plates, vehicle_name, category, concept, amount, date, observations, vehicle_id, maint_id)
+            bg = ("#F8FAFC", "#1E293B") if idx % 2 == 0 else ("#EFF6FF", "#0F172A")
+            self._draw_row(bg, e)
+
+    def _draw_header(self, headers):
+        frame = ctk.CTkFrame(self.table_scroll, fg_color=("gray85", "gray20"), corner_radius=6)
+        frame.pack(fill="x", pady=(0, 4))
+        for i in range(len(headers)):
+            frame.grid_columnconfigure(i, weight=1 if i < 5 else 0)
+        for i, h in enumerate(headers):
+            ctk.CTkLabel(frame, text=h, font=ctk.CTkFont(weight="bold")).grid(
+                row=0, column=i, padx=6, pady=8, sticky="w")
+
+    def _draw_row(self, bg, row_data):
+        e_id, plates, v_name, cat, concept, amount, date, obs, v_id, maint_id = row_data
+        rf = ctk.CTkFrame(self.table_scroll, fg_color=bg, corner_radius=4)
+        rf.pack(fill="x", pady=1)
+        for i in range(6):
+            rf.grid_columnconfigure(i, weight=1 if i < 5 else 0)
+
+        vehicle_str = f"{plates} - {v_name}"
+        ctk.CTkLabel(rf, text=vehicle_str, font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, padx=6, pady=6, sticky="w")
+        
+        # Categoría
+        ctk.CTkLabel(rf, text=cat).grid(row=0, column=1, padx=6, pady=6, sticky="w")
+        
+        # Concepto
+        display_concept = (concept[:25] + '...') if len(concept) > 25 else concept
+        ctk.CTkLabel(rf, text=display_concept).grid(row=0, column=2, padx=6, pady=6, sticky="w")
+        
+        # Monto
+        amount_color = "#10B981" if float(amount) == 0 else ("#DC2626", "#F87171")
+        ctk.CTkLabel(rf, text=f"${amount:,.2f}", text_color=amount_color, font=ctk.CTkFont(weight="bold")).grid(row=0, column=3, padx=6, pady=6, sticky="w")
+        
+        # Fecha
+        try:
+            display_date = datetime.datetime.strptime(date, "%Y-%m-%d").strftime("%d/%m/%Y")
+        except Exception:
+            display_date = date
+        ctk.CTkLabel(rf, text=display_date).grid(row=0, column=4, padx=6, pady=6, sticky="w")
+        
+        # Acciones
+        actions = ctk.CTkFrame(rf, fg_color="transparent")
+        actions.grid(row=0, column=5, padx=4, pady=2, sticky="e")
+
+        ctk.CTkButton(
+            actions, text="✏️", width=32, height=26,
+            command=lambda eid=e_id: self._open_edit(eid),
+        ).grid(row=0, column=0, padx=2)
+
+        btn_del = ctk.CTkButton(
+            actions, text="🗑️", width=32, height=26,
+            fg_color="#EF4444", hover_color="#B91C1C",
+            command=lambda eid=e_id: self._delete(eid),
+        )
+        btn_del.grid(row=0, column=1, padx=2)
+        
+        # Si viene de mantenimiento, se bloquea el borrado
+        if maint_id is not None:
+            btn_del.configure(state="disabled", fg_color="gray", hover_color="gray")
+
+    def _open_add(self):
+        ExpenseDialog(self.winfo_toplevel(), self.controller.current_admin_id, callback=self.refresh)
+
+    def _open_edit(self, expense_id):
+        # expense_data = (id, vehicle_id, category, concept, amount, date, observations, maint_id)
+        data = database.get_expense_by_id(expense_id, self.controller.current_admin_id)
+        if data:
+            ExpenseDialog(self.winfo_toplevel(), self.controller.current_admin_id, expense_data=data, callback=self.refresh)
+
+    def _delete(self, expense_id):
+        ans = messagebox.askyesno("Confirmar", "¿Eliminar este gasto de forma permanente?", parent=self)
+        if ans:
+            ok, msg = database.delete_expense(expense_id, self.controller.current_admin_id)
+            if ok:
+                self.refresh()
+            else:
+                messagebox.showerror("Error", msg, parent=self)

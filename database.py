@@ -68,6 +68,7 @@ def init_db():
         admin_id     INTEGER NOT NULL,
         vehicle_id   INTEGER NOT NULL,
         date         TEXT    NOT NULL,
+        end_date     TEXT    DEFAULT NULL,
         service_type TEXT    NOT NULL CHECK(service_type IN (
             'Cambio de aceite', 'Cambio de llantas', 'Afinación',
             'Reparación', 'Mantenimiento completo'
@@ -90,8 +91,10 @@ def init_db():
         amount       REAL    NOT NULL,
         date         TEXT    NOT NULL,
         observations TEXT    DEFAULT '',
+        maint_id     INTEGER DEFAULT NULL,
         FOREIGN KEY (admin_id)   REFERENCES admins(id)   ON DELETE CASCADE,
-        FOREIGN KEY (vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE
+        FOREIGN KEY (vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE,
+        FOREIGN KEY (maint_id)   REFERENCES maintenance(id) ON DELETE CASCADE
     )""")
 
     conn.commit()
@@ -161,14 +164,32 @@ def get_vehicle_by_id(vehicle_id, admin_id):
     return row
 
 
-def get_vehicles_for_combo(admin_id):
-    """Retorna [(id, 'PLACAS - Marca Modelo'), …] para llenar comboboxes."""
+def get_vehicles_for_combo(admin_id, current_driver_id=None, current_vehicle_id=None):
+    """Retorna [(id, 'PLACAS - Marca Modelo'), …] excluyendo ocupados o en mantenimiento."""
     conn = get_connection()
     c = conn.cursor()
-    c.execute("""
+    
+    query = """
         SELECT id, plates, brand, model FROM vehicles
-        WHERE admin_id = ? AND status = 'Activo' ORDER BY plates
-    """, (admin_id,))
+        WHERE admin_id = ? AND status = 'Activo'
+          AND (
+              id NOT IN (
+                  SELECT vehicle_id FROM drivers 
+                  WHERE vehicle_id IS NOT NULL 
+                    AND status IN ('Activo', 'Suspendido')
+                    AND (? IS NULL OR id != ?)
+              )
+          )
+          AND (
+              id NOT IN (
+                  SELECT vehicle_id FROM maintenance
+                  WHERE (date <= date('now', 'localtime') AND (end_date IS NULL OR end_date >= date('now', 'localtime')))
+              )
+              OR (? IS NOT NULL AND id = ?)
+          )
+        ORDER BY plates
+    """
+    c.execute(query, (admin_id, current_driver_id, current_driver_id, current_vehicle_id, current_vehicle_id))
     rows = c.fetchall()
     conn.close()
     return [(r[0], f"{r[1]} - {r[2]} {r[3]}") for r in rows]
@@ -324,14 +345,22 @@ def delete_driver(driver_id, admin_id):
 #  MANTENIMIENTOS — CRUD
 # =========================================================================
 
-def add_maintenance(admin_id, vehicle_id, date, service_type, description=""):
+def add_maintenance(admin_id, vehicle_id, date, service_type, description="", end_date=None):
     try:
         conn = get_connection()
         c = conn.cursor()
         c.execute("""
-            INSERT INTO maintenance (admin_id, vehicle_id, date, service_type, description)
-            VALUES (?, ?, ?, ?, ?)
-        """, (admin_id, vehicle_id, date.strip(), service_type, description.strip()))
+            INSERT INTO maintenance (admin_id, vehicle_id, date, end_date, service_type, description)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (admin_id, vehicle_id, date.strip(), end_date.strip() if end_date else None, service_type, description.strip()))
+        
+        maint_id = c.lastrowid
+        exp_date = end_date.strip() if end_date else date.strip()
+        c.execute("""
+            INSERT INTO expenses (admin_id, vehicle_id, category, concept, amount, date, observations, maint_id)
+            VALUES (?, ?, 'Mantenimiento', ?, 0.0, ?, 'Generado automáticamente desde Mantenimientos', ?)
+        """, (admin_id, vehicle_id, service_type, exp_date, maint_id))
+        
         conn.commit()
         return True, "Mantenimiento registrado con éxito."
     except Exception as e:
@@ -341,11 +370,11 @@ def add_maintenance(admin_id, vehicle_id, date, service_type, description=""):
 
 
 def get_maintenance(admin_id, search_query="", vehicle_id=None):
-    """Devuelve (id, plates, vehicle_name, date, service_type, description, vehicle_id)."""
+    """Devuelve (id, plates, vehicle_name, date, end_date, service_type, description, vehicle_id)."""
     conn = get_connection()
     c = conn.cursor()
     base = """
-        SELECT m.id, v.plates, v.brand || ' ' || v.model, m.date,
+        SELECT m.id, v.plates, v.brand || ' ' || v.model, m.date, m.end_date,
                m.service_type, m.description, m.vehicle_id
         FROM maintenance m
         JOIN vehicles v ON m.vehicle_id = v.id
@@ -367,11 +396,11 @@ def get_maintenance(admin_id, search_query="", vehicle_id=None):
 
 
 def get_maintenance_by_id(maint_id, admin_id):
-    """Devuelve (id, vehicle_id, date, service_type, description) o None."""
+    """Devuelve (id, vehicle_id, date, end_date, service_type, description) o None."""
     conn = get_connection()
     c = conn.cursor()
     c.execute("""
-        SELECT id, vehicle_id, date, service_type, description
+        SELECT id, vehicle_id, date, end_date, service_type, description
         FROM maintenance WHERE id=? AND admin_id=?
     """, (maint_id, admin_id))
     row = c.fetchone()
@@ -379,15 +408,22 @@ def get_maintenance_by_id(maint_id, admin_id):
     return row
 
 
-def update_maintenance(maint_id, admin_id, vehicle_id, date, service_type, description=""):
+def update_maintenance(maint_id, admin_id, vehicle_id, date, service_type, description="", end_date=None):
     try:
         conn = get_connection()
         c = conn.cursor()
         c.execute("""
-            UPDATE maintenance SET vehicle_id=?, date=?, service_type=?, description=?
+            UPDATE maintenance SET vehicle_id=?, date=?, end_date=?, service_type=?, description=?
             WHERE id=? AND admin_id=?
-        """, (vehicle_id, date.strip(), service_type, description.strip(),
+        """, (vehicle_id, date.strip(), end_date.strip() if end_date else None, service_type, description.strip(),
               maint_id, admin_id))
+              
+        exp_date = end_date.strip() if end_date else date.strip()
+        c.execute("""
+            UPDATE expenses SET vehicle_id=?, concept=?, date=?
+            WHERE maint_id=? AND admin_id=?
+        """, (vehicle_id, service_type, exp_date, maint_id, admin_id))
+        
         conn.commit()
         return True, "Mantenimiento actualizado con éxito."
     except Exception as e:
@@ -433,12 +469,12 @@ def add_expense(admin_id, vehicle_id, category, concept, amount, date, observati
 
 
 def get_expenses(admin_id, search_query="", vehicle_id=None):
-    """Devuelve (id, plates, vehicle_name, category, concept, amount, date, observations, vehicle_id)."""
+    """Devuelve (id, plates, vehicle_name, category, concept, amount, date, observations, vehicle_id, maint_id)."""
     conn = get_connection()
     c = conn.cursor()
     base = """
         SELECT e.id, v.plates, v.brand || ' ' || v.model, e.category,
-               e.concept, e.amount, e.date, e.observations, e.vehicle_id
+               e.concept, e.amount, e.date, e.observations, e.vehicle_id, e.maint_id
         FROM expenses e
         JOIN vehicles v ON e.vehicle_id = v.id
         WHERE e.admin_id = ?
@@ -459,11 +495,11 @@ def get_expenses(admin_id, search_query="", vehicle_id=None):
 
 
 def get_expense_by_id(expense_id, admin_id):
-    """Devuelve (id, vehicle_id, category, concept, amount, date, observations) o None."""
+    """Devuelve (id, vehicle_id, category, concept, amount, date, observations, maint_id) o None."""
     conn = get_connection()
     c = conn.cursor()
     c.execute("""
-        SELECT id, vehicle_id, category, concept, amount, date, observations
+        SELECT id, vehicle_id, category, concept, amount, date, observations, maint_id
         FROM expenses WHERE id=? AND admin_id=?
     """, (expense_id, admin_id))
     row = c.fetchone()
