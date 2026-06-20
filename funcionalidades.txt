@@ -1,0 +1,60 @@
+Funcionalidades del Sistema
+
+1. Sistema de Autenticación
+   - Inicio de sesión para administradores.
+   - Registro de nuevos usuarios.
+   - Recuperación de contraseña mediante pregunta de seguridad.
+
+2. Dashboard Principal
+   - Tarjetas de resumen: Vehículos registrados, Mantenimientos del mes y Gastos del mes.
+   - Menú de navegación principal hacia los diferentes módulos.
+
+3. Gestión de Vehículos
+   - Registro con información de: Marca, Modelo, Año, Placas, VIN, Kilometraje y Estado (Activo/Inactivo).
+   - Funciones: Agregar, Editar, Eliminar, Buscar.
+   - Validación en tiempo real de formato de VIN.
+
+4. Gestión de Conductores
+   - Registro con información de: Nombre, Teléfono, Dirección, CURP, Estado (Activo, Suspendido, Baja) y Asignación de Vehículo.
+   - Funciones: Agregar, Editar, Eliminar, Buscar.
+   - Validación en tiempo real de formato de CURP.
+   - Protección para evitar asignar vehículos que ya están ocupados o en mantenimiento.
+
+5. Gestión de Mantenimientos
+   - Historial de servicios a vehículos.
+   - Registro con: Vehículo, Fecha de inicio, Fecha de fin, Tipo de servicio y Descripción.
+   - Generación automática de un gasto asociado al registrar un mantenimiento.
+
+6. Gestión de Gastos
+   - Registro de los gastos generados por la flotilla.
+   - Información de: Vehículo, Categoría, Concepto, Monto, Fecha y Observaciones.
+   - Funciones: Agregar, Editar, Eliminar, Buscar.
+   - Protección de borrado para los gastos que fueron generados automáticamente desde un mantenimiento.
+
+7. Base de Datos y Arquitectura
+   - Almacenamiento local mediante SQLite (sin conexión a la nube).
+   - Soporte para múltiples usuarios (aislamiento de datos por cada administrador).
+
+8. Despliegue
+   - Script de construcción integrado para generar un archivo ejecutable (.exe) independiente para Windows.
+
+
+---
+Instrucciones de Instalación y Ejecución
+
+A) Requisitos previos:
+   - Python 3.8 o superior instalado.
+
+B) Instalación de dependencias:
+   Abre una terminal en la carpeta del proyecto y ejecuta:
+   pip install -r requirements.txt
+
+C) Ejecutar el programa en modo desarrollo:
+   Para correr el código fuente directamente (ideal para pruebas y modificaciones):
+   python main.py
+
+D) Generar el ejecutable (.exe):
+   Para compilar el proyecto en un archivo único .exe (para Windows):
+   python build.py
+   
+   Al finalizar, el ejecutable "FlotillaControl.exe" aparecerá dentro de la carpeta "dist/".

@@ -27,3 +27,7 @@ dist/
 # Archivos temporales del sistema operativo
 .DS_Store
 Thumbs.db
+
+# Análisis locales (generados por AI)
+estado_del_proyecto.md
+REQUERIMIENTOS.md

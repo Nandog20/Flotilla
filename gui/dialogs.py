@@ -82,6 +82,15 @@ class VehicleDialog(ctk.CTkToplevel):
                 entry.grid(row=i, column=1, padx=30, pady=7, sticky="ew")
                 setattr(self, attr, entry)
 
+        # Validación: solo números en Año y Kilometraje
+        self.year_var = ctk.StringVar()
+        self.entry_year.configure(textvariable=self.year_var)
+        self.year_var.trace_add("write", lambda *a: self._filter_digits(self.year_var, 4))
+
+        self.mileage_var = ctk.StringVar()
+        self.entry_mileage.configure(textvariable=self.mileage_var)
+        self.mileage_var.trace_add("write", lambda *a: self._filter_digits(self.mileage_var))
+
         # Estado (ComboBox)
         row_status = len(fields_cfg) + 1
         ctk.CTkLabel(self, text="Estado:", anchor="w").grid(
@@ -121,6 +130,15 @@ class VehicleDialog(ctk.CTkToplevel):
             fg_color="#6B7280", hover_color="#4B5563",
             command=self.destroy,
         ).grid(row=0, column=1, padx=20)
+
+    def _filter_digits(self, var, max_len=None):
+        """Filtra el contenido de un StringVar para permitir solo dígitos."""
+        val = var.get()
+        filtered = ''.join(c for c in val if c.isdigit())
+        if max_len and len(filtered) > max_len:
+            filtered = filtered[:max_len]
+        if val != filtered:
+            var.set(filtered)
 
     def _validate_vin(self, *args):
         val = self.vin_var.get()
@@ -226,8 +244,19 @@ class DriverDialog(ctk.CTkToplevel):
 
         ctk.CTkLabel(self, text="Teléfono:", anchor="w").grid(
             row=2, column=0, padx=30, pady=7, sticky="w")
-        self.entry_phone = ctk.CTkEntry(self, placeholder_text="10 dígitos")
-        self.entry_phone.grid(row=2, column=1, padx=30, pady=7, sticky="ew")
+
+        frame_phone = ctk.CTkFrame(self, fg_color="transparent")
+        frame_phone.grid(row=2, column=1, padx=30, pady=7, sticky="ew")
+        frame_phone.grid_columnconfigure(0, weight=1)
+
+        self.entry_phone = ctk.CTkEntry(frame_phone, placeholder_text="10 dígitos")
+        self.entry_phone.grid(row=0, column=0, sticky="ew")
+
+        self.phone_var = ctk.StringVar()
+        self.entry_phone.configure(textvariable=self.phone_var)
+        self.lbl_phone_warn = ctk.CTkLabel(frame_phone, text="", font=ctk.CTkFont(size=11, weight="bold"))
+        self.lbl_phone_warn.grid(row=0, column=1, padx=(5, 0))
+        self.phone_var.trace_add("write", self._validate_phone)
 
         ctk.CTkLabel(self, text="Dirección:", anchor="w").grid(
             row=3, column=0, padx=30, pady=7, sticky="w")
@@ -307,6 +336,23 @@ class DriverDialog(ctk.CTkToplevel):
             command=self.destroy,
         ).grid(row=0, column=1, padx=20)
 
+    def _validate_phone(self, *args):
+        """Solo permite dígitos, máximo 10, con indicador visual."""
+        val = self.phone_var.get()
+        filtered = ''.join(c for c in val if c.isdigit())
+        if len(filtered) > 10:
+            filtered = filtered[:10]
+        if val != filtered:
+            self.phone_var.set(filtered)
+            return
+
+        if len(filtered) == 0:
+            self.lbl_phone_warn.configure(text="")
+        elif len(filtered) < 10:
+            self.lbl_phone_warn.configure(text=f"⚠️ {len(filtered)}/10", text_color="#F59E0B")
+        else:
+            self.lbl_phone_warn.configure(text="✅", text_color="#10B981")
+
     def _validate_curp(self, *args):
         val = self.curp_var.get()
         if len(val) > 18:
@@ -333,6 +379,12 @@ class DriverDialog(ctk.CTkToplevel):
             messagebox.showwarning(
                 "Campos vacíos",
                 "Nombre, teléfono y CURP son obligatorios.", parent=self)
+            return
+
+        if len(phone) != 10:
+            messagebox.showwarning(
+                "Teléfono inválido",
+                "El teléfono debe tener exactamente 10 dígitos.", parent=self)
             return
 
         if len(curp) != 18:
@@ -516,6 +568,14 @@ class MaintenanceDialog(ctk.CTkToplevel):
                 messagebox.showwarning("Error", "La fecha fin debe tener formato DD/MM/AAAA", parent=self)
                 return
 
+        # Validar que fecha fin sea posterior o igual a fecha inicio
+        if parsed_end_date and parsed_end_date < parsed_date:
+            messagebox.showwarning(
+                "Error de fechas",
+                "La fecha de fin no puede ser anterior a la fecha de inicio.",
+                parent=self)
+            return
+
         if self.maint_data:
             ok, msg = database.update_maintenance(
                 self.maint_data[0], self.admin_id, vehicle_id, parsed_date, srv_type, desc, parsed_end_date)
@@ -600,6 +660,10 @@ class ExpenseDialog(ctk.CTkToplevel):
         self.entry_amount = ctk.CTkEntry(self, placeholder_text="Ej: 1500.50")
         self.entry_amount.grid(row=4, column=1, padx=30, pady=7, sticky="ew")
 
+        self.amount_var = ctk.StringVar()
+        self.entry_amount.configure(textvariable=self.amount_var)
+        self.amount_var.trace_add("write", self._validate_amount_input)
+
         # --- Fecha ---
         ctk.CTkLabel(self, text="Fecha:", anchor="w").grid(
             row=5, column=0, padx=30, pady=7, sticky="w")
@@ -671,6 +735,20 @@ class ExpenseDialog(ctk.CTkToplevel):
             command=self.destroy,
         ).grid(row=0, column=1, padx=20)
 
+    def _validate_amount_input(self, *args):
+        """Solo permite dígitos y un punto decimal en el monto."""
+        val = self.amount_var.get()
+        filtered = ''
+        has_dot = False
+        for c in val:
+            if c.isdigit():
+                filtered += c
+            elif c == '.' and not has_dot:
+                filtered += c
+                has_dot = True
+        if val != filtered:
+            self.amount_var.set(filtered)
+
     def _save(self):
         vehicle_str = self.combo_vehicle.get()
         vehicle_id = self.vehicle_map.get(vehicle_str)
@@ -701,12 +779,20 @@ class ExpenseDialog(ctk.CTkToplevel):
             messagebox.showwarning("Error", "La fecha debe tener formato DD/MM/AAAA", parent=self)
             return
 
+        # Determinar el conductor actual del vehículo
+        if self.expense_data and vehicle_id == self.expense_data[1]:
+            # Editando sin cambiar vehículo: preservar conductor original
+            driver_name = self.expense_data[8]
+        else:
+            # Nuevo gasto o vehículo cambiado: buscar conductor actual
+            driver_name = database.get_current_driver_for_vehicle(self.admin_id, vehicle_id)
+
         if self.expense_data:
             ok, msg = database.update_expense(
-                self.expense_data[0], self.admin_id, vehicle_id, cat, concept, amount, parsed_date, obs)
+                self.expense_data[0], self.admin_id, vehicle_id, cat, concept, amount, parsed_date, obs, driver_name)
         else:
             ok, msg = database.add_expense(
-                self.admin_id, vehicle_id, cat, concept, amount, parsed_date, obs)
+                self.admin_id, vehicle_id, cat, concept, amount, parsed_date, obs, driver_name)
 
         if ok:
             if self.callback:

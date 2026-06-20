@@ -9,7 +9,7 @@ class ExpensesFrame(ctk.CTkFrame):
         super().__init__(parent, fg_color="transparent")
         self.controller = controller
 
-        self.grid_rowconfigure(2, weight=1)
+        self.grid_rowconfigure(3, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
         # ---- Barra superior ----
@@ -57,23 +57,77 @@ class ExpensesFrame(ctk.CTkFrame):
             command=self.refresh,
         ).grid(row=0, column=1, padx=(0, 12), pady=10)
 
+        # ---- Filtro de fechas ----
+        date_filter = ctk.CTkFrame(self, corner_radius=8)
+        date_filter.grid(row=2, column=0, sticky="ew", padx=15, pady=(0, 10))
+
+        ctk.CTkLabel(
+            date_filter, text="📅  Filtrar por fecha:",
+            font=ctk.CTkFont(size=13, weight="bold"),
+        ).grid(row=0, column=0, padx=(12, 8), pady=10, sticky="w")
+
+        ctk.CTkLabel(date_filter, text="Desde:", font=ctk.CTkFont(size=12)).grid(
+            row=0, column=1, padx=(10, 4), pady=10, sticky="w")
+
+        self.entry_date_from = ctk.CTkEntry(
+            date_filter, placeholder_text="DD/MM/AAAA", width=120, height=32)
+        self.entry_date_from.grid(row=0, column=2, padx=(0, 10), pady=10)
+
+        ctk.CTkLabel(date_filter, text="Hasta:", font=ctk.CTkFont(size=12)).grid(
+            row=0, column=3, padx=(10, 4), pady=10, sticky="w")
+
+        self.entry_date_to = ctk.CTkEntry(
+            date_filter, placeholder_text="DD/MM/AAAA", width=120, height=32)
+        self.entry_date_to.grid(row=0, column=4, padx=(0, 10), pady=10)
+
+        ctk.CTkButton(
+            date_filter, text="Filtrar", width=80, height=32,
+            fg_color="#3B82F6", hover_color="#2563EB",
+            command=self.refresh,
+        ).grid(row=0, column=5, padx=(5, 5), pady=10)
+
+        ctk.CTkButton(
+            date_filter, text="Limpiar", width=80, height=32,
+            fg_color="#6B7280", hover_color="#4B5563",
+            command=self._clear_date_filter,
+        ).grid(row=0, column=6, padx=(0, 12), pady=10)
+
         # ---- Contenedor de tabla ----
         table_container = ctk.CTkFrame(self)
-        table_container.grid(row=2, column=0, sticky="nsew", padx=15, pady=(0, 12))
+        table_container.grid(row=3, column=0, sticky="nsew", padx=15, pady=(0, 12))
 
         self.table_scroll = ctk.CTkScrollableFrame(table_container)
         self.table_scroll.pack(fill="both", expand=True, padx=6, pady=6)
 
     # -----------------------------------------------------------------
+    def _parse_filter_date(self, date_str):
+        """Convierte DD/MM/AAAA a YYYY-MM-DD para filtros, retorna None si inválido."""
+        date_str = date_str.strip()
+        if not date_str:
+            return None
+        try:
+            return datetime.datetime.strptime(date_str, "%d/%m/%Y").strftime("%Y-%m-%d")
+        except ValueError:
+            return None
+
+    def _clear_date_filter(self):
+        """Limpia los campos de filtro de fecha y refresca."""
+        self.entry_date_from.delete(0, "end")
+        self.entry_date_to.delete(0, "end")
+        self.refresh()
+
     def refresh(self):
         for w in self.table_scroll.winfo_children():
             w.destroy()
 
-        headers = ["Vehículo", "Categoría", "Concepto", "Monto", "Fecha", "Acciones"]
+        headers = ["Vehículo", "Conductor", "Categoría", "Concepto", "Monto", "Fecha", "Acciones"]
         self._draw_header(headers)
 
         query = self.entry_search.get()
-        rows = database.get_expenses(self.controller.current_admin_id, query)
+        date_from = self._parse_filter_date(self.entry_date_from.get())
+        date_to = self._parse_filter_date(self.entry_date_to.get())
+        rows = database.get_expenses(self.controller.current_admin_id, query,
+                                     date_from=date_from, date_to=date_to)
 
         if not rows:
             ctk.CTkLabel(
@@ -91,42 +145,47 @@ class ExpensesFrame(ctk.CTkFrame):
         frame = ctk.CTkFrame(self.table_scroll, fg_color=("gray85", "gray20"), corner_radius=6)
         frame.pack(fill="x", pady=(0, 4))
         for i in range(len(headers)):
-            frame.grid_columnconfigure(i, weight=1 if i < 5 else 0)
+            frame.grid_columnconfigure(i, weight=1 if i < 6 else 0)
         for i, h in enumerate(headers):
             ctk.CTkLabel(frame, text=h, font=ctk.CTkFont(weight="bold")).grid(
                 row=0, column=i, padx=6, pady=8, sticky="w")
 
     def _draw_row(self, bg, row_data):
-        e_id, plates, v_name, cat, concept, amount, date, obs, v_id, maint_id = row_data
+        e_id, plates, v_name, cat, concept, amount, date, obs, v_id, maint_id, driver_name = row_data
         rf = ctk.CTkFrame(self.table_scroll, fg_color=bg, corner_radius=4)
         rf.pack(fill="x", pady=1)
-        for i in range(6):
-            rf.grid_columnconfigure(i, weight=1 if i < 5 else 0)
+        for i in range(7):
+            rf.grid_columnconfigure(i, weight=1 if i < 6 else 0)
 
         vehicle_str = f"{plates} - {v_name}"
         ctk.CTkLabel(rf, text=vehicle_str, font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, padx=6, pady=6, sticky="w")
-        
+
+        # Conductor
+        display_driver = driver_name if driver_name else "Sin conductor"
+        driver_color = {} if driver_name else {"text_color": "gray"}
+        ctk.CTkLabel(rf, text=display_driver, font=ctk.CTkFont(size=12), **driver_color).grid(row=0, column=1, padx=6, pady=6, sticky="w")
+
         # Categoría
-        ctk.CTkLabel(rf, text=cat).grid(row=0, column=1, padx=6, pady=6, sticky="w")
-        
+        ctk.CTkLabel(rf, text=cat).grid(row=0, column=2, padx=6, pady=6, sticky="w")
+
         # Concepto
         display_concept = (concept[:25] + '...') if len(concept) > 25 else concept
-        ctk.CTkLabel(rf, text=display_concept).grid(row=0, column=2, padx=6, pady=6, sticky="w")
-        
+        ctk.CTkLabel(rf, text=display_concept).grid(row=0, column=3, padx=6, pady=6, sticky="w")
+
         # Monto
         amount_color = "#10B981" if float(amount) == 0 else ("#DC2626", "#F87171")
-        ctk.CTkLabel(rf, text=f"${amount:,.2f}", text_color=amount_color, font=ctk.CTkFont(weight="bold")).grid(row=0, column=3, padx=6, pady=6, sticky="w")
-        
+        ctk.CTkLabel(rf, text=f"${amount:,.2f}", text_color=amount_color, font=ctk.CTkFont(weight="bold")).grid(row=0, column=4, padx=6, pady=6, sticky="w")
+
         # Fecha
         try:
             display_date = datetime.datetime.strptime(date, "%Y-%m-%d").strftime("%d/%m/%Y")
         except Exception:
             display_date = date
-        ctk.CTkLabel(rf, text=display_date).grid(row=0, column=4, padx=6, pady=6, sticky="w")
-        
+        ctk.CTkLabel(rf, text=display_date).grid(row=0, column=5, padx=6, pady=6, sticky="w")
+
         # Acciones
         actions = ctk.CTkFrame(rf, fg_color="transparent")
-        actions.grid(row=0, column=5, padx=4, pady=2, sticky="e")
+        actions.grid(row=0, column=6, padx=4, pady=2, sticky="e")
 
         ctk.CTkButton(
             actions, text="✏️", width=32, height=26,
@@ -139,7 +198,7 @@ class ExpensesFrame(ctk.CTkFrame):
             command=lambda eid=e_id: self._delete(eid),
         )
         btn_del.grid(row=0, column=1, padx=2)
-        
+
         # Si viene de mantenimiento, se bloquea el borrado
         if maint_id is not None:
             btn_del.configure(state="disabled", fg_color="gray", hover_color="gray")

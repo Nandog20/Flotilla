@@ -92,10 +92,17 @@ def init_db():
         date         TEXT    NOT NULL,
         observations TEXT    DEFAULT '',
         maint_id     INTEGER DEFAULT NULL,
+        driver_name  TEXT    DEFAULT '',
         FOREIGN KEY (admin_id)   REFERENCES admins(id)   ON DELETE CASCADE,
         FOREIGN KEY (vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE,
         FOREIGN KEY (maint_id)   REFERENCES maintenance(id) ON DELETE CASCADE
     )""")
+
+    # Migración: agregar columna driver_name si no existe (para BDs previas)
+    try:
+        c.execute("ALTER TABLE expenses ADD COLUMN driver_name TEXT DEFAULT ''")
+    except Exception:
+        pass  # La columna ya existe
 
     conn.commit()
     conn.close()
@@ -341,12 +348,26 @@ def delete_driver(driver_id, admin_id):
         conn.close()
 
 
+def get_current_driver_for_vehicle(admin_id, vehicle_id):
+    """Devuelve el nombre del conductor activo asignado al vehículo, o '' si no hay."""
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("""
+        SELECT name FROM drivers
+        WHERE admin_id = ? AND vehicle_id = ? AND status IN ('Activo', 'Suspendido')
+    """, (admin_id, vehicle_id))
+    row = c.fetchone()
+    conn.close()
+    return row[0] if row else ""
+
+
 # =========================================================================
 #  MANTENIMIENTOS — CRUD
 # =========================================================================
 
 def add_maintenance(admin_id, vehicle_id, date, service_type, description="", end_date=None):
     try:
+        driver_name = get_current_driver_for_vehicle(admin_id, vehicle_id)
         conn = get_connection()
         c = conn.cursor()
         c.execute("""
@@ -357,9 +378,9 @@ def add_maintenance(admin_id, vehicle_id, date, service_type, description="", en
         maint_id = c.lastrowid
         exp_date = end_date.strip() if end_date else date.strip()
         c.execute("""
-            INSERT INTO expenses (admin_id, vehicle_id, category, concept, amount, date, observations, maint_id)
-            VALUES (?, ?, 'Mantenimiento', ?, 0.0, ?, 'Generado automáticamente desde Mantenimientos', ?)
-        """, (admin_id, vehicle_id, service_type, exp_date, maint_id))
+            INSERT INTO expenses (admin_id, vehicle_id, category, concept, amount, date, observations, maint_id, driver_name)
+            VALUES (?, ?, 'Mantenimiento', ?, 0.0, ?, 'Generado automáticamente desde Mantenimientos', ?, ?)
+        """, (admin_id, vehicle_id, service_type, exp_date, maint_id, driver_name))
         
         conn.commit()
         return True, "Mantenimiento registrado con éxito."
@@ -369,7 +390,7 @@ def add_maintenance(admin_id, vehicle_id, date, service_type, description="", en
         conn.close()
 
 
-def get_maintenance(admin_id, search_query="", vehicle_id=None):
+def get_maintenance(admin_id, search_query="", vehicle_id=None, date_from=None, date_to=None):
     """Devuelve (id, plates, vehicle_name, date, end_date, service_type, description, vehicle_id)."""
     conn = get_connection()
     c = conn.cursor()
@@ -384,6 +405,12 @@ def get_maintenance(admin_id, search_query="", vehicle_id=None):
     if vehicle_id:
         base += " AND m.vehicle_id = ?"
         params.append(vehicle_id)
+    if date_from:
+        base += " AND m.date >= ?"
+        params.append(date_from)
+    if date_to:
+        base += " AND m.date <= ?"
+        params.append(date_to)
     if search_query:
         q = f"%{search_query}%"
         base += " AND (v.plates LIKE ? OR m.service_type LIKE ? OR m.description LIKE ? OR m.date LIKE ?)"
@@ -410,6 +437,7 @@ def get_maintenance_by_id(maint_id, admin_id):
 
 def update_maintenance(maint_id, admin_id, vehicle_id, date, service_type, description="", end_date=None):
     try:
+        driver_name = get_current_driver_for_vehicle(admin_id, vehicle_id)
         conn = get_connection()
         c = conn.cursor()
         c.execute("""
@@ -420,9 +448,9 @@ def update_maintenance(maint_id, admin_id, vehicle_id, date, service_type, descr
               
         exp_date = end_date.strip() if end_date else date.strip()
         c.execute("""
-            UPDATE expenses SET vehicle_id=?, concept=?, date=?
+            UPDATE expenses SET vehicle_id=?, concept=?, date=?, driver_name=?
             WHERE maint_id=? AND admin_id=?
-        """, (vehicle_id, service_type, exp_date, maint_id, admin_id))
+        """, (vehicle_id, service_type, exp_date, driver_name, maint_id, admin_id))
         
         conn.commit()
         return True, "Mantenimiento actualizado con éxito."
@@ -450,16 +478,16 @@ def delete_maintenance(maint_id, admin_id):
 #  GASTOS — CRUD
 # =========================================================================
 
-def add_expense(admin_id, vehicle_id, category, concept, amount, date, observations=""):
+def add_expense(admin_id, vehicle_id, category, concept, amount, date, observations="", driver_name=""):
     try:
         conn = get_connection()
         c = conn.cursor()
         c.execute("""
             INSERT INTO expenses
-                (admin_id, vehicle_id, category, concept, amount, date, observations)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                (admin_id, vehicle_id, category, concept, amount, date, observations, driver_name)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (admin_id, vehicle_id, category, concept.strip(),
-              float(amount), date.strip(), observations.strip()))
+              float(amount), date.strip(), observations.strip(), driver_name))
         conn.commit()
         return True, "Gasto registrado con éxito."
     except Exception as e:
@@ -468,13 +496,14 @@ def add_expense(admin_id, vehicle_id, category, concept, amount, date, observati
         conn.close()
 
 
-def get_expenses(admin_id, search_query="", vehicle_id=None):
-    """Devuelve (id, plates, vehicle_name, category, concept, amount, date, observations, vehicle_id, maint_id)."""
+def get_expenses(admin_id, search_query="", vehicle_id=None, date_from=None, date_to=None):
+    """Devuelve (id, plates, vehicle_name, category, concept, amount, date, observations, vehicle_id, maint_id, driver_name)."""
     conn = get_connection()
     c = conn.cursor()
     base = """
         SELECT e.id, v.plates, v.brand || ' ' || v.model, e.category,
-               e.concept, e.amount, e.date, e.observations, e.vehicle_id, e.maint_id
+               e.concept, e.amount, e.date, e.observations, e.vehicle_id, e.maint_id,
+               e.driver_name
         FROM expenses e
         JOIN vehicles v ON e.vehicle_id = v.id
         WHERE e.admin_id = ?
@@ -483,6 +512,12 @@ def get_expenses(admin_id, search_query="", vehicle_id=None):
     if vehicle_id:
         base += " AND e.vehicle_id = ?"
         params.append(vehicle_id)
+    if date_from:
+        base += " AND e.date >= ?"
+        params.append(date_from)
+    if date_to:
+        base += " AND e.date <= ?"
+        params.append(date_to)
     if search_query:
         q = f"%{search_query}%"
         base += " AND (v.plates LIKE ? OR e.category LIKE ? OR e.concept LIKE ? OR e.observations LIKE ?)"
@@ -495,11 +530,11 @@ def get_expenses(admin_id, search_query="", vehicle_id=None):
 
 
 def get_expense_by_id(expense_id, admin_id):
-    """Devuelve (id, vehicle_id, category, concept, amount, date, observations, maint_id) o None."""
+    """Devuelve (id, vehicle_id, category, concept, amount, date, observations, maint_id, driver_name) o None."""
     conn = get_connection()
     c = conn.cursor()
     c.execute("""
-        SELECT id, vehicle_id, category, concept, amount, date, observations, maint_id
+        SELECT id, vehicle_id, category, concept, amount, date, observations, maint_id, driver_name
         FROM expenses WHERE id=? AND admin_id=?
     """, (expense_id, admin_id))
     row = c.fetchone()
@@ -507,16 +542,16 @@ def get_expense_by_id(expense_id, admin_id):
     return row
 
 
-def update_expense(expense_id, admin_id, vehicle_id, category, concept, amount, date, observations=""):
+def update_expense(expense_id, admin_id, vehicle_id, category, concept, amount, date, observations="", driver_name=""):
     try:
         conn = get_connection()
         c = conn.cursor()
         c.execute("""
             UPDATE expenses
-            SET vehicle_id=?, category=?, concept=?, amount=?, date=?, observations=?
+            SET vehicle_id=?, category=?, concept=?, amount=?, date=?, observations=?, driver_name=?
             WHERE id=? AND admin_id=?
         """, (vehicle_id, category, concept.strip(), float(amount),
-              date.strip(), observations.strip(), expense_id, admin_id))
+              date.strip(), observations.strip(), driver_name, expense_id, admin_id))
         conn.commit()
         return True, "Gasto actualizado con éxito."
     except Exception as e:
@@ -615,3 +650,64 @@ def get_general_report(admin_id):
         "total_expense": total_expense,
         "active_vehicles": active_vehicles,
     }
+
+
+def get_driver_report(admin_id):
+    """Reporte por conductor: nombre, teléfono, estado, vehículo, gasto total, # gastos."""
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("""
+        SELECT d.id, d.name, d.phone, d.status,
+            COALESCE(v.plates || ' - ' || v.brand || ' ' || v.model, 'Sin vehículo'),
+            COALESCE((SELECT SUM(e.amount) FROM expenses e
+                      WHERE e.driver_name = d.name AND e.admin_id = ?), 0),
+            COALESCE((SELECT COUNT(*) FROM expenses e
+                      WHERE e.driver_name = d.name AND e.admin_id = ?
+                      AND e.amount > 0), 0)
+        FROM drivers d
+        LEFT JOIN vehicles v ON d.vehicle_id = v.id
+        WHERE d.admin_id = ?
+        ORDER BY d.name
+    """, (admin_id, admin_id, admin_id))
+    rows = c.fetchall()
+    conn.close()
+    return rows
+
+
+def get_expenses_by_driver(admin_id, driver_name, date_from=None, date_to=None):
+    """Devuelve todos los gastos asociados a un conductor específico."""
+    conn = get_connection()
+    c = conn.cursor()
+    base = """
+        SELECT e.id, v.plates, v.brand || ' ' || v.model, e.category,
+               e.concept, e.amount, e.date, e.observations, e.vehicle_id, e.maint_id,
+               e.driver_name
+        FROM expenses e
+        JOIN vehicles v ON e.vehicle_id = v.id
+        WHERE e.admin_id = ? AND e.driver_name = ?
+    """
+    params = [admin_id, driver_name]
+    if date_from:
+        base += " AND e.date >= ?"
+        params.append(date_from)
+    if date_to:
+        base += " AND e.date <= ?"
+        params.append(date_to)
+    base += " ORDER BY e.date DESC"
+    c.execute(base, params)
+    rows = c.fetchall()
+    conn.close()
+    return rows
+
+
+def get_drivers_for_report_combo(admin_id):
+    """Retorna lista de nombres de conductores para el combo de reportes."""
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("""
+        SELECT DISTINCT name FROM drivers
+        WHERE admin_id = ? ORDER BY name
+    """, (admin_id,))
+    rows = c.fetchall()
+    conn.close()
+    return [r[0] for r in rows]

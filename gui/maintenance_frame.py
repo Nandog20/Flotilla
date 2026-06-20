@@ -13,7 +13,7 @@ class MaintenanceFrame(ctk.CTkFrame):
         super().__init__(parent, fg_color="transparent")
         self.controller = controller
 
-        self.grid_rowconfigure(2, weight=1)
+        self.grid_rowconfigure(3, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
         # ---- Barra superior ----
@@ -60,14 +60,65 @@ class MaintenanceFrame(ctk.CTkFrame):
             command=self.refresh,
         ).grid(row=0, column=1, padx=(0, 12), pady=10)
 
+        # ---- Filtro de fechas ----
+        date_filter = ctk.CTkFrame(self, corner_radius=8)
+        date_filter.grid(row=2, column=0, sticky="ew", padx=15, pady=(0, 10))
+
+        ctk.CTkLabel(
+            date_filter, text="📅  Filtrar por fecha:",
+            font=ctk.CTkFont(size=13, weight="bold"),
+        ).grid(row=0, column=0, padx=(12, 8), pady=10, sticky="w")
+
+        ctk.CTkLabel(date_filter, text="Desde:", font=ctk.CTkFont(size=12)).grid(
+            row=0, column=1, padx=(10, 4), pady=10, sticky="w")
+
+        self.entry_date_from = ctk.CTkEntry(
+            date_filter, placeholder_text="DD/MM/AAAA", width=120, height=32)
+        self.entry_date_from.grid(row=0, column=2, padx=(0, 10), pady=10)
+
+        ctk.CTkLabel(date_filter, text="Hasta:", font=ctk.CTkFont(size=12)).grid(
+            row=0, column=3, padx=(10, 4), pady=10, sticky="w")
+
+        self.entry_date_to = ctk.CTkEntry(
+            date_filter, placeholder_text="DD/MM/AAAA", width=120, height=32)
+        self.entry_date_to.grid(row=0, column=4, padx=(0, 10), pady=10)
+
+        ctk.CTkButton(
+            date_filter, text="Filtrar", width=80, height=32,
+            fg_color="#3B82F6", hover_color="#2563EB",
+            command=self.refresh,
+        ).grid(row=0, column=5, padx=(5, 5), pady=10)
+
+        ctk.CTkButton(
+            date_filter, text="Limpiar", width=80, height=32,
+            fg_color="#6B7280", hover_color="#4B5563",
+            command=self._clear_date_filter,
+        ).grid(row=0, column=6, padx=(0, 12), pady=10)
+
         # ---- Contenedor de tabla ----
         table_container = ctk.CTkFrame(self)
-        table_container.grid(row=2, column=0, sticky="nsew", padx=15, pady=(0, 12))
+        table_container.grid(row=3, column=0, sticky="nsew", padx=15, pady=(0, 12))
 
         self.table_scroll = ctk.CTkScrollableFrame(table_container)
         self.table_scroll.pack(fill="both", expand=True, padx=6, pady=6)
 
     # -----------------------------------------------------------------
+    def _parse_filter_date(self, date_str):
+        """Convierte DD/MM/AAAA a YYYY-MM-DD para filtros, retorna None si inválido."""
+        date_str = date_str.strip()
+        if not date_str:
+            return None
+        try:
+            return datetime.datetime.strptime(date_str, "%d/%m/%Y").strftime("%Y-%m-%d")
+        except ValueError:
+            return None
+
+    def _clear_date_filter(self):
+        """Limpia los campos de filtro de fecha y refresca."""
+        self.entry_date_from.delete(0, "end")
+        self.entry_date_to.delete(0, "end")
+        self.refresh()
+
     def refresh(self):
         for w in self.table_scroll.winfo_children():
             w.destroy()
@@ -76,7 +127,10 @@ class MaintenanceFrame(ctk.CTkFrame):
         self._draw_header(headers)
 
         query = self.entry_search.get()
-        rows = database.get_maintenance(self.controller.current_admin_id, query)
+        date_from = self._parse_filter_date(self.entry_date_from.get())
+        date_to = self._parse_filter_date(self.entry_date_to.get())
+        rows = database.get_maintenance(self.controller.current_admin_id, query,
+                                        date_from=date_from, date_to=date_to)
 
         if not rows:
             ctk.CTkLabel(
