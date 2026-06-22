@@ -17,6 +17,38 @@ except ImportError:
     DateEntry = None
 
 
+def _auto_format_date(var, warn_label, optional=False):
+    """Filtra y autoformatea una variable de fecha en tiempo real como DD/MM/AAAA y actualiza el warn_label."""
+    val = var.get()
+    digits = ''.join(c for c in val if c.isdigit())
+    
+    formatted = ""
+    if len(digits) > 0:
+        formatted += digits[:2]
+    if len(digits) > 2:
+        formatted += "/" + digits[2:4]
+    if len(digits) > 4:
+        formatted += "/" + digits[4:8]
+        
+    if val != formatted:
+        var.set(formatted)
+        val = formatted
+        
+    if len(val) == 0:
+        if optional:
+            warn_label.configure(text="")
+        else:
+            warn_label.configure(text="⚠️ Requerido", text_color="#EF4444")
+    elif len(val) < 10:
+        warn_label.configure(text="⚠️ Incompleto", text_color="#F59E0B")
+    else:
+        try:
+            datetime.datetime.strptime(val, "%d/%m/%Y")
+            warn_label.configure(text="✅", text_color="#10B981")
+        except ValueError:
+            warn_label.configure(text="❌ Inválida", text_color="#EF4444")
+
+
 # =====================================================================
 #  DIÁLOGO DE VEHÍCULO
 # =====================================================================
@@ -165,6 +197,12 @@ class VehicleDialog(ctk.CTkToplevel):
         if not all([brand, model, year_s, plates, vin, mileage_s]):
             messagebox.showwarning(
                 "Campos vacíos", "Todos los campos son obligatorios.",
+                parent=self)
+            return
+
+        if len(vin) != 17:
+            messagebox.showwarning(
+                "VIN inválido", "El VIN debe tener exactamente 17 caracteres.",
                 parent=self)
             return
 
@@ -426,7 +464,7 @@ class MaintenanceDialog(ctk.CTkToplevel):
 
         self._title_text = "Editar Mantenimiento" if maint_data else "Registrar Mantenimiento"
         self.title(self._title_text)
-        self.geometry("520x580")
+        self.geometry("520x630")
         self.resizable(False, False)
         self.transient(parent)
 
@@ -463,10 +501,21 @@ class MaintenanceDialog(ctk.CTkToplevel):
             row=2, column=0, padx=30, pady=7, sticky="w")
         if DateEntry:
             self.entry_date = DateEntry(self, width=12, background='darkblue', foreground='white', borderwidth=2, date_pattern='dd/mm/yyyy')
+            self.entry_date.grid(row=2, column=1, padx=30, pady=7, sticky="ew")
         else:
-            self.entry_date = ctk.CTkEntry(self, placeholder_text="Ej: DD/MM/AAAA")
+            frame_date = ctk.CTkFrame(self, fg_color="transparent")
+            frame_date.grid(row=2, column=1, padx=30, pady=7, sticky="ew")
+            frame_date.grid_columnconfigure(0, weight=1)
             
-        self.entry_date.grid(row=2, column=1, padx=30, pady=7, sticky="ew")
+            self.entry_date = ctk.CTkEntry(frame_date, placeholder_text="Ej: DD/MM/AAAA")
+            self.entry_date.grid(row=0, column=0, sticky="ew")
+            
+            self.date_var = ctk.StringVar()
+            self.entry_date.configure(textvariable=self.date_var)
+            self.lbl_date_warn = ctk.CTkLabel(frame_date, text="", font=ctk.CTkFont(size=11, weight="bold"))
+            self.lbl_date_warn.grid(row=0, column=1, padx=(5, 0))
+            self.date_var.trace_add("write", lambda *a: _auto_format_date(self.date_var, self.lbl_date_warn, optional=False))
+            
         if not self.maint_data:
             self.entry_date.delete(0, 'end')
             self.entry_date.insert(0, datetime.date.today().strftime("%d/%m/%Y"))
@@ -476,11 +525,22 @@ class MaintenanceDialog(ctk.CTkToplevel):
             row=3, column=0, padx=30, pady=7, sticky="w")
         if DateEntry:
             self.entry_end_date = DateEntry(self, width=12, background='darkblue', foreground='white', borderwidth=2, date_pattern='dd/mm/yyyy')
+            self.entry_end_date.grid(row=3, column=1, padx=30, pady=7, sticky="ew")
+            self.entry_end_date.delete(0, 'end') # Start empty since it's optional
         else:
-            self.entry_end_date = ctk.CTkEntry(self, placeholder_text="Ej: DD/MM/AAAA")
+            frame_end_date = ctk.CTkFrame(self, fg_color="transparent")
+            frame_end_date.grid(row=3, column=1, padx=30, pady=7, sticky="ew")
+            frame_end_date.grid_columnconfigure(0, weight=1)
             
-        self.entry_end_date.grid(row=3, column=1, padx=30, pady=7, sticky="ew")
-        self.entry_end_date.delete(0, 'end') # Start empty since it's optional
+            self.entry_end_date = ctk.CTkEntry(frame_end_date, placeholder_text="Ej: DD/MM/AAAA")
+            self.entry_end_date.grid(row=0, column=0, sticky="ew")
+            
+            self.end_date_var = ctk.StringVar()
+            self.entry_end_date.configure(textvariable=self.end_date_var)
+            self.lbl_end_date_warn = ctk.CTkLabel(frame_end_date, text="", font=ctk.CTkFont(size=11, weight="bold"))
+            self.lbl_end_date_warn.grid(row=0, column=1, padx=(5, 0))
+            self.end_date_var.trace_add("write", lambda *a: _auto_format_date(self.end_date_var, self.lbl_end_date_warn, optional=True))
+            self.entry_end_date.delete(0, 'end') # Start empty since it's optional
 
         # --- Tipo de Servicio ---
         ctk.CTkLabel(self, text="Tipo de Servicio:", anchor="w").grid(
@@ -490,15 +550,25 @@ class MaintenanceDialog(ctk.CTkToplevel):
         self.combo_type.grid(row=4, column=1, padx=30, pady=7, sticky="ew")
         self.combo_type.set("Mantenimiento completo")
 
+        # --- Monto ---
+        ctk.CTkLabel(self, text="Costo / Monto ($):", anchor="w").grid(
+            row=5, column=0, padx=30, pady=7, sticky="w")
+        self.entry_amount = ctk.CTkEntry(self, placeholder_text="Ej: 1500.50")
+        self.entry_amount.grid(row=5, column=1, padx=30, pady=7, sticky="ew")
+
+        self.amount_var = ctk.StringVar()
+        self.entry_amount.configure(textvariable=self.amount_var)
+        self.amount_var.trace_add("write", self._validate_amount_input)
+
         # --- Descripción ---
         ctk.CTkLabel(self, text="Descripción:", anchor="nw").grid(
-            row=5, column=0, padx=30, pady=7, sticky="nw")
+            row=6, column=0, padx=30, pady=7, sticky="nw")
         self.textbox_desc = ctk.CTkTextbox(self, height=80)
-        self.textbox_desc.grid(row=5, column=1, padx=30, pady=7, sticky="ew")
+        self.textbox_desc.grid(row=6, column=1, padx=30, pady=7, sticky="ew")
 
         # Pre-llenar si editando
         if self.maint_data:
-            # (id, vehicle_id, date, end_date, service_type, description)
+            # (id, vehicle_id, date, end_date, service_type, description, amount)
             v_id = self.maint_data[1]
             for disp, vid in self.vehicle_map.items():
                 if vid == v_id:
@@ -520,10 +590,15 @@ class MaintenanceDialog(ctk.CTkToplevel):
                 
             self.combo_type.set(self.maint_data[4])
             self.textbox_desc.insert("0.0", self.maint_data[5])
+            
+            # Monto
+            self.entry_amount.insert(0, f"{self.maint_data[6]:.2f}" if len(self.maint_data) > 6 else "0.00")
+        else:
+            self.entry_amount.insert(0, "0.00")
 
         # Botones
         btn_frame = ctk.CTkFrame(self, fg_color="transparent")
-        btn_frame.grid(row=6, column=0, columnspan=2, pady=(25, 20), sticky="ew")
+        btn_frame.grid(row=7, column=0, columnspan=2, pady=(25, 20), sticky="ew")
         btn_frame.grid_columnconfigure((0, 1), weight=1)
 
         ctk.CTkButton(
@@ -539,12 +614,27 @@ class MaintenanceDialog(ctk.CTkToplevel):
             command=self.destroy,
         ).grid(row=0, column=1, padx=20)
 
+    def _validate_amount_input(self, *args):
+        """Solo permite dígitos y un punto decimal en el monto."""
+        val = self.amount_var.get()
+        filtered = ''
+        has_dot = False
+        for c in val:
+            if c.isdigit():
+                filtered += c
+            elif c == '.' and not has_dot:
+                filtered += c
+                has_dot = True
+        if val != filtered:
+            self.amount_var.set(filtered)
+
     def _save(self):
         vehicle_str = self.combo_vehicle.get()
         vehicle_id = self.vehicle_map.get(vehicle_str)
         date = self.entry_date.get().strip()
         end_date = self.entry_end_date.get().strip()
         srv_type = self.combo_type.get()
+        amount_str = self.entry_amount.get().strip()
         desc = self.textbox_desc.get("0.0", "end").strip()
 
         if not vehicle_id:
@@ -552,6 +642,14 @@ class MaintenanceDialog(ctk.CTkToplevel):
             return
         if not date:
             messagebox.showwarning("Error", "La fecha de inicio es obligatoria.", parent=self)
+            return
+
+        try:
+            amount = float(amount_str) if amount_str else 0.0
+            if amount < 0:
+                raise ValueError
+        except ValueError:
+            messagebox.showwarning("Error", "Monto inválido. Ingrese un número positivo.", parent=self)
             return
 
         try:
@@ -578,10 +676,10 @@ class MaintenanceDialog(ctk.CTkToplevel):
 
         if self.maint_data:
             ok, msg = database.update_maintenance(
-                self.maint_data[0], self.admin_id, vehicle_id, parsed_date, srv_type, desc, parsed_end_date)
+                self.maint_data[0], self.admin_id, vehicle_id, parsed_date, srv_type, desc, parsed_end_date, amount)
         else:
             ok, msg = database.add_maintenance(
-                self.admin_id, vehicle_id, parsed_date, srv_type, desc, parsed_end_date)
+                self.admin_id, vehicle_id, parsed_date, srv_type, desc, parsed_end_date, amount)
 
         if ok:
             if self.callback:
@@ -669,9 +767,21 @@ class ExpenseDialog(ctk.CTkToplevel):
             row=5, column=0, padx=30, pady=7, sticky="w")
         if DateEntry:
             self.entry_date = DateEntry(self, width=12, background='darkblue', foreground='white', borderwidth=2, date_pattern='dd/mm/yyyy')
+            self.entry_date.grid(row=5, column=1, padx=30, pady=7, sticky="ew")
         else:
-            self.entry_date = ctk.CTkEntry(self, placeholder_text="Ej: DD/MM/AAAA")
-        self.entry_date.grid(row=5, column=1, padx=30, pady=7, sticky="ew")
+            frame_date = ctk.CTkFrame(self, fg_color="transparent")
+            frame_date.grid(row=5, column=1, padx=30, pady=7, sticky="ew")
+            frame_date.grid_columnconfigure(0, weight=1)
+            
+            self.entry_date = ctk.CTkEntry(frame_date, placeholder_text="Ej: DD/MM/AAAA")
+            self.entry_date.grid(row=0, column=0, sticky="ew")
+            
+            self.date_var = ctk.StringVar()
+            self.entry_date.configure(textvariable=self.date_var)
+            self.lbl_date_warn = ctk.CTkLabel(frame_date, text="", font=ctk.CTkFont(size=11, weight="bold"))
+            self.lbl_date_warn.grid(row=0, column=1, padx=(5, 0))
+            self.date_var.trace_add("write", lambda *a: _auto_format_date(self.date_var, self.lbl_date_warn, optional=False))
+            
         if not self.expense_data:
             self.entry_date.delete(0, 'end')
             self.entry_date.insert(0, datetime.date.today().strftime("%d/%m/%Y"))

@@ -123,7 +123,7 @@ class MaintenanceFrame(ctk.CTkFrame):
         for w in self.table_scroll.winfo_children():
             w.destroy()
 
-        headers = ["Vehículo", "Servicio", "Fecha Inicio", "Fecha Fin", "Descripción", "Acciones"]
+        headers = ["Vehículo", "Servicio", "Monto", "Fecha Inicio", "Fecha Fin", "Descripción", "Acciones"]
         self._draw_header(headers)
 
         query = self.entry_search.get()
@@ -140,7 +140,7 @@ class MaintenanceFrame(ctk.CTkFrame):
             return
 
         for idx, m in enumerate(rows):
-            # m = (id, plates, vehicle_name, date, end_date, service_type, description, vehicle_id)
+            # m = (id, plates, vehicle_name, date, end_date, service_type, description, vehicle_id, amount)
             bg = ("#F8FAFC", "#1E293B") if idx % 2 == 0 else ("#EFF6FF", "#0F172A")
             self._draw_row(bg, m)
 
@@ -148,27 +148,31 @@ class MaintenanceFrame(ctk.CTkFrame):
         frame = ctk.CTkFrame(self.table_scroll, fg_color=("gray85", "gray20"), corner_radius=6)
         frame.pack(fill="x", pady=(0, 4))
         for i in range(len(headers)):
-            frame.grid_columnconfigure(i, weight=1 if i < 5 else 0)
+            frame.grid_columnconfigure(i, weight=1 if i < 6 else 0)
         for i, h in enumerate(headers):
             ctk.CTkLabel(frame, text=h, font=ctk.CTkFont(weight="bold")).grid(
                 row=0, column=i, padx=6, pady=8, sticky="w")
 
     def _draw_row(self, bg, row_data):
-        m_id, plates, v_name, date, end_date, srv_type, desc, v_id = row_data
+        m_id, plates, v_name, date, end_date, srv_type, desc, v_id, amount = row_data
         rf = ctk.CTkFrame(self.table_scroll, fg_color=bg, corner_radius=4)
         rf.pack(fill="x", pady=1)
-        for i in range(6):
-            rf.grid_columnconfigure(i, weight=1 if i < 5 else 0)
+        for i in range(7):
+            rf.grid_columnconfigure(i, weight=1 if i < 6 else 0)
 
         vehicle_str = f"{plates} - {v_name}"
         ctk.CTkLabel(rf, text=vehicle_str, font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, padx=6, pady=6, sticky="w")
         ctk.CTkLabel(rf, text=srv_type).grid(row=0, column=1, padx=6, pady=6, sticky="w")
         
+        # Monto
+        amount_color = "#10B981" if float(amount) == 0 else ("#DC2626", "#F87171")
+        ctk.CTkLabel(rf, text=f"${amount:,.2f}", text_color=amount_color, font=ctk.CTkFont(weight="bold")).grid(row=0, column=2, padx=6, pady=6, sticky="w")
+        
         try:
             display_date = datetime.datetime.strptime(date, "%Y-%m-%d").strftime("%d/%m/%Y")
         except Exception:
             display_date = date
-        ctk.CTkLabel(rf, text=display_date).grid(row=0, column=2, padx=6, pady=6, sticky="w")
+        ctk.CTkLabel(rf, text=display_date).grid(row=0, column=3, padx=6, pady=6, sticky="w")
         
         if end_date:
             try:
@@ -179,14 +183,14 @@ class MaintenanceFrame(ctk.CTkFrame):
             display_end_date = "N/A"
             
         color_args = {"text_color": "gray"} if not end_date else {}
-        ctk.CTkLabel(rf, text=display_end_date, **color_args).grid(row=0, column=3, padx=6, pady=6, sticky="w")
+        ctk.CTkLabel(rf, text=display_end_date, **color_args).grid(row=0, column=4, padx=6, pady=6, sticky="w")
         
         # Truncate description if too long
         display_desc = (desc[:30] + '...') if len(desc) > 30 else desc
-        ctk.CTkLabel(rf, text=display_desc).grid(row=0, column=4, padx=6, pady=6, sticky="w")
+        ctk.CTkLabel(rf, text=display_desc).grid(row=0, column=5, padx=6, pady=6, sticky="w")
 
         actions = ctk.CTkFrame(rf, fg_color="transparent")
-        actions.grid(row=0, column=5, padx=4, pady=2, sticky="e")
+        actions.grid(row=0, column=6, padx=4, pady=2, sticky="e")
 
         ctk.CTkButton(
             actions, text="✏️", width=32, height=26,

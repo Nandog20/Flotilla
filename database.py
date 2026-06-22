@@ -365,7 +365,7 @@ def get_current_driver_for_vehicle(admin_id, vehicle_id):
 #  MANTENIMIENTOS — CRUD
 # =========================================================================
 
-def add_maintenance(admin_id, vehicle_id, date, service_type, description="", end_date=None):
+def add_maintenance(admin_id, vehicle_id, date, service_type, description="", end_date=None, amount=0.0):
     try:
         driver_name = get_current_driver_for_vehicle(admin_id, vehicle_id)
         conn = get_connection()
@@ -379,8 +379,8 @@ def add_maintenance(admin_id, vehicle_id, date, service_type, description="", en
         exp_date = end_date.strip() if end_date else date.strip()
         c.execute("""
             INSERT INTO expenses (admin_id, vehicle_id, category, concept, amount, date, observations, maint_id, driver_name)
-            VALUES (?, ?, 'Mantenimiento', ?, 0.0, ?, 'Generado automáticamente desde Mantenimientos', ?, ?)
-        """, (admin_id, vehicle_id, service_type, exp_date, maint_id, driver_name))
+            VALUES (?, ?, 'Mantenimiento', ?, ?, ?, 'Generado automáticamente desde Mantenimientos', ?, ?)
+        """, (admin_id, vehicle_id, service_type, float(amount), exp_date, maint_id, driver_name))
         
         conn.commit()
         return True, "Mantenimiento registrado con éxito."
@@ -391,14 +391,15 @@ def add_maintenance(admin_id, vehicle_id, date, service_type, description="", en
 
 
 def get_maintenance(admin_id, search_query="", vehicle_id=None, date_from=None, date_to=None):
-    """Devuelve (id, plates, vehicle_name, date, end_date, service_type, description, vehicle_id)."""
+    """Devuelve (id, plates, vehicle_name, date, end_date, service_type, description, vehicle_id, amount)."""
     conn = get_connection()
     c = conn.cursor()
     base = """
         SELECT m.id, v.plates, v.brand || ' ' || v.model, m.date, m.end_date,
-               m.service_type, m.description, m.vehicle_id
+               m.service_type, m.description, m.vehicle_id, COALESCE(e.amount, 0.0)
         FROM maintenance m
         JOIN vehicles v ON m.vehicle_id = v.id
+        LEFT JOIN expenses e ON e.maint_id = m.id
         WHERE m.admin_id = ?
     """
     params = [admin_id]
@@ -423,19 +424,21 @@ def get_maintenance(admin_id, search_query="", vehicle_id=None, date_from=None, 
 
 
 def get_maintenance_by_id(maint_id, admin_id):
-    """Devuelve (id, vehicle_id, date, end_date, service_type, description) o None."""
+    """Devuelve (id, vehicle_id, date, end_date, service_type, description, amount) o None."""
     conn = get_connection()
     c = conn.cursor()
     c.execute("""
-        SELECT id, vehicle_id, date, end_date, service_type, description
-        FROM maintenance WHERE id=? AND admin_id=?
+        SELECT m.id, m.vehicle_id, m.date, m.end_date, m.service_type, m.description, COALESCE(e.amount, 0.0)
+        FROM maintenance m
+        LEFT JOIN expenses e ON e.maint_id = m.id
+        WHERE m.id=? AND m.admin_id=?
     """, (maint_id, admin_id))
     row = c.fetchone()
     conn.close()
     return row
 
 
-def update_maintenance(maint_id, admin_id, vehicle_id, date, service_type, description="", end_date=None):
+def update_maintenance(maint_id, admin_id, vehicle_id, date, service_type, description="", end_date=None, amount=0.0):
     try:
         driver_name = get_current_driver_for_vehicle(admin_id, vehicle_id)
         conn = get_connection()
@@ -448,9 +451,9 @@ def update_maintenance(maint_id, admin_id, vehicle_id, date, service_type, descr
               
         exp_date = end_date.strip() if end_date else date.strip()
         c.execute("""
-            UPDATE expenses SET vehicle_id=?, concept=?, date=?, driver_name=?
+            UPDATE expenses SET vehicle_id=?, concept=?, date=?, amount=?, driver_name=?
             WHERE maint_id=? AND admin_id=?
-        """, (vehicle_id, service_type, exp_date, driver_name, maint_id, admin_id))
+        """, (vehicle_id, service_type, exp_date, float(amount), driver_name, maint_id, admin_id))
         
         conn.commit()
         return True, "Mantenimiento actualizado con éxito."

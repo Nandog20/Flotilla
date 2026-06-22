@@ -7,6 +7,8 @@ dropdown y ver TODOS sus gastos detallados con el total acumulado.
 import customtkinter as ctk
 import datetime
 import database
+from tkinter import filedialog, messagebox
+import pdf_generator
 
 
 class ReportsFrame(ctk.CTkFrame):
@@ -38,6 +40,15 @@ class ReportsFrame(ctk.CTkFrame):
             top, text="📊  Reportes",
             font=ctk.CTkFont(size=22, weight="bold"),
         ).grid(row=0, column=1, sticky="w", padx=10)
+
+        # Botón para exportar PDF
+        self.btn_export = ctk.CTkButton(
+            top, text="📄 Exportar PDF", width=120, height=35,
+            fg_color="#10B981", hover_color="#059669",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            command=self._export_to_pdf,
+        )
+        self.btn_export.grid(row=0, column=2, sticky="e")
 
         # ---- Row 1: Selector de modo + ComboBox ----
         selector_bar = ctk.CTkFrame(self, corner_radius=8)
@@ -360,3 +371,65 @@ class ReportsFrame(ctk.CTkFrame):
 
     def refresh(self):
         self._populate_combo()
+
+    def _export_to_pdf(self):
+        """Genera y exporta el reporte actual a un archivo PDF."""
+        admin_id = self.controller.current_admin_id
+        selected_value = self.combo_select.get()
+        
+        # Validar selección
+        if not selected_value or "Sin " in selected_value:
+            messagebox.showwarning("Advertencia", "Debe seleccionar un elemento válido para exportar.", parent=self)
+            return
+
+        date_from = self._parse_filter_date(self.entry_date_from.get())
+        date_to = self._parse_filter_date(self.entry_date_to.get())
+
+        # Obtener los datos desde la BD para asegurar consistencia
+        if self._current_mode == "vehiculo":
+            vehicle_id = self._vehicle_map.get(selected_value)
+            if not vehicle_id:
+                messagebox.showwarning("Advertencia", "Vehículo no válido.", parent=self)
+                return
+            rows = database.get_expenses(admin_id, vehicle_id=vehicle_id,
+                                         date_from=date_from, date_to=date_to)
+        else:
+            if selected_value not in self._driver_list:
+                messagebox.showwarning("Advertencia", "Conductor no válido.", parent=self)
+                return
+            rows = database.get_expenses_by_driver(admin_id, selected_value,
+                                                   date_from=date_from, date_to=date_to)
+
+        if not rows:
+            messagebox.showinfo("Reporte vacío", "No hay gastos registrados que coincidan con los filtros seleccionados.", parent=self)
+            return
+
+        # Diálogo para elegir dónde guardar el PDF
+        default_name = f"reporte_flotilla_{self._current_mode}_{selected_value.replace(' ', '_').replace('-', '_')}.pdf"
+        # Limpiar caracteres raros del nombre de archivo sugerido si los hay
+        default_name = "".join(c for c in default_name if c.isalnum() or c in "._-")
+        
+        file_path = filedialog.asksaveasfilename(
+            parent=self,
+            title="Guardar Reporte PDF",
+            initialfile=default_name,
+            defaultextension=".pdf",
+            filetypes=[("Archivos PDF", "*.pdf")]
+        )
+        
+        if not file_path:
+            return # Cancelado por el usuario
+            
+        try:
+            # Invocar al generador de PDF
+            pdf_generator.generate_report_pdf(
+                filename=file_path,
+                mode=self._current_mode,
+                selected_name=selected_value,
+                date_from_db=date_from,
+                date_to_db=date_to,
+                rows=rows
+            )
+            messagebox.showinfo("Éxito", f"Reporte exportado correctamente a:\n{file_path}", parent=self)
+        except Exception as e:
+            messagebox.showerror("Error", f"Ocurrió un error al generar el PDF:\n{e}", parent=self)
