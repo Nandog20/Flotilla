@@ -7,6 +7,10 @@ from tkinter import messagebox
 import datetime
 import database
 from gui.dialogs import MaintenanceDialog
+try:
+    from tkcalendar import DateEntry
+except ImportError:
+    DateEntry = None
 
 class MaintenanceFrame(ctk.CTkFrame):
     def __init__(self, parent, controller):
@@ -72,16 +76,31 @@ class MaintenanceFrame(ctk.CTkFrame):
         ctk.CTkLabel(date_filter, text="Desde:", font=ctk.CTkFont(size=12)).grid(
             row=0, column=1, padx=(10, 4), pady=10, sticky="w")
 
-        self.entry_date_from = ctk.CTkEntry(
-            date_filter, placeholder_text="DD/MM/AAAA", width=120, height=32)
-        self.entry_date_from.grid(row=0, column=2, padx=(0, 10), pady=10)
+        self.date_from_var = ctk.StringVar()
+        self.date_from_var.trace_add("write", lambda *a: self._filter_date_chars(self.date_from_var))
+        self.date_to_var = ctk.StringVar()
+        self.date_to_var.trace_add("write", lambda *a: self._filter_date_chars(self.date_to_var))
+
+        if DateEntry:
+            self.entry_date_from = DateEntry(date_filter, textvariable=self.date_from_var, width=12, background='darkblue', foreground='white', borderwidth=2, date_pattern='dd/mm/yyyy')
+            self.entry_date_from.grid(row=0, column=2, padx=(0, 10), pady=10)
+            self.entry_date_from.delete(0, 'end')
+        else:
+            self.entry_date_from = ctk.CTkEntry(
+                date_filter, textvariable=self.date_from_var, placeholder_text="DD/MM/AAAA", width=120, height=32)
+            self.entry_date_from.grid(row=0, column=2, padx=(0, 10), pady=10)
 
         ctk.CTkLabel(date_filter, text="Hasta:", font=ctk.CTkFont(size=12)).grid(
             row=0, column=3, padx=(10, 4), pady=10, sticky="w")
 
-        self.entry_date_to = ctk.CTkEntry(
-            date_filter, placeholder_text="DD/MM/AAAA", width=120, height=32)
-        self.entry_date_to.grid(row=0, column=4, padx=(0, 10), pady=10)
+        if DateEntry:
+            self.entry_date_to = DateEntry(date_filter, textvariable=self.date_to_var, width=12, background='darkblue', foreground='white', borderwidth=2, date_pattern='dd/mm/yyyy')
+            self.entry_date_to.grid(row=0, column=4, padx=(0, 10), pady=10)
+            self.entry_date_to.delete(0, 'end')
+        else:
+            self.entry_date_to = ctk.CTkEntry(
+                date_filter, textvariable=self.date_to_var, placeholder_text="DD/MM/AAAA", width=120, height=32)
+            self.entry_date_to.grid(row=0, column=4, padx=(0, 10), pady=10)
 
         ctk.CTkButton(
             date_filter, text="Filtrar", width=80, height=32,
@@ -127,8 +146,22 @@ class MaintenanceFrame(ctk.CTkFrame):
         self._draw_header(headers)
 
         query = self.entry_search.get()
-        date_from = self._parse_filter_date(self.entry_date_from.get())
-        date_to = self._parse_filter_date(self.entry_date_to.get())
+        date_from_str = self.entry_date_from.get().strip()
+        date_to_str = self.entry_date_to.get().strip()
+        
+        date_from = self._parse_filter_date(date_from_str)
+        date_to = self._parse_filter_date(date_to_str)
+        
+        if date_from_str and not date_from:
+            messagebox.showwarning("Error de fecha", "La fecha 'Desde' tiene un formato inválido. Use DD/MM/AAAA.", parent=self.winfo_toplevel())
+            return
+        if date_to_str and not date_to:
+            messagebox.showwarning("Error de fecha", "La fecha 'Hasta' tiene un formato inválido. Use DD/MM/AAAA.", parent=self.winfo_toplevel())
+            return
+        if date_from and date_to and date_from > date_to:
+            messagebox.showwarning("Fechas incongruentes", "La fecha de inicio ('Desde') debe ser anterior o igual a la fecha de fin ('Hasta').", parent=self.winfo_toplevel())
+            return
+
         rows = database.get_maintenance(self.controller.current_admin_id, query,
                                         date_from=date_from, date_to=date_to)
 
@@ -143,6 +176,25 @@ class MaintenanceFrame(ctk.CTkFrame):
             # m = (id, plates, vehicle_name, date, end_date, service_type, description, vehicle_id, amount)
             bg = ("#F8FAFC", "#1E293B") if idx % 2 == 0 else ("#EFF6FF", "#0F172A")
             self._draw_row(bg, m)
+
+        # ---- Fila TOTAL al final ----
+        total = sum(r[8] for r in rows)
+        tf = ctk.CTkFrame(
+            self.table_scroll, fg_color=("#D1FAE5", "#064E3B"), corner_radius=6)
+        tf.pack(fill="x", pady=(6, 0))
+        for i in range(len(headers)):
+            tf.grid_columnconfigure(i, weight=1 if i < 6 else 0)
+
+        ctk.CTkLabel(
+            tf, text="TOTAL",
+            font=ctk.CTkFont(size=14, weight="bold"),
+        ).grid(row=0, column=0, padx=6, pady=10, sticky="w")
+
+        ctk.CTkLabel(
+            tf, text=f"${total:,.2f}",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color=("#059669", "#34D399"),
+        ).grid(row=0, column=2, padx=6, pady=10, sticky="w")
 
     def _draw_header(self, headers):
         frame = ctk.CTkFrame(self.table_scroll, fg_color=("gray85", "gray20"), corner_radius=6)
@@ -221,3 +273,9 @@ class MaintenanceFrame(ctk.CTkFrame):
                 self.refresh()
             else:
                 messagebox.showerror("Error", msg, parent=self.winfo_toplevel())
+
+    def _filter_date_chars(self, var):
+        val = var.get()
+        filtered = ''.join(c for c in val if c.isdigit() or c == '/')
+        if val != filtered:
+            var.set(filtered)

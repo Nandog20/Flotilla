@@ -43,7 +43,7 @@ class DashboardFrame(ctk.CTkFrame):
             cards, "🔧  Mantenimientos del Mes", "0", "#F59E0B", 1,
         )
         self.card_expenses = self._make_card(
-            cards, "💰  Gastos del Mes", "$0.00", "#10B981", 2,
+            cards, "💰  Total Gastado", "$0.00", "#10B981", 2,
         )
 
         # ---- Grid de botones de navegación ----

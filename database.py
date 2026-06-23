@@ -172,7 +172,7 @@ def get_vehicle_by_id(vehicle_id, admin_id):
 
 
 def get_vehicles_for_combo(admin_id, current_driver_id=None, current_vehicle_id=None):
-    """Retorna [(id, 'PLACAS - Marca Modelo'), …] excluyendo ocupados o en mantenimiento."""
+    """Retorna [(id, 'PLACAS - Marca Modelo'), …] excluyendo ocupados por otros conductores."""
     conn = get_connection()
     c = conn.cursor()
     
@@ -187,16 +187,9 @@ def get_vehicles_for_combo(admin_id, current_driver_id=None, current_vehicle_id=
                     AND (? IS NULL OR id != ?)
               )
           )
-          AND (
-              id NOT IN (
-                  SELECT vehicle_id FROM maintenance
-                  WHERE (date <= date('now', 'localtime') AND (end_date IS NULL OR end_date >= date('now', 'localtime')))
-              )
-              OR (? IS NOT NULL AND id = ?)
-          )
         ORDER BY plates
     """
-    c.execute(query, (admin_id, current_driver_id, current_driver_id, current_vehicle_id, current_vehicle_id))
+    c.execute(query, (admin_id, current_driver_id, current_driver_id))
     rows = c.fetchall()
     conn.close()
     return [(r[0], f"{r[1]} - {r[2]} {r[3]}") for r in rows]
@@ -414,8 +407,8 @@ def get_maintenance(admin_id, search_query="", vehicle_id=None, date_from=None, 
         params.append(date_to)
     if search_query:
         q = f"%{search_query}%"
-        base += " AND (v.plates LIKE ? OR m.service_type LIKE ? OR m.description LIKE ? OR m.date LIKE ?)"
-        params.extend([q, q, q, q])
+        base += " AND (v.plates LIKE ? OR v.brand LIKE ? OR v.model LIKE ? OR m.service_type LIKE ? OR m.description LIKE ? OR m.date LIKE ?)"
+        params.extend([q, q, q, q, q, q])
     base += " ORDER BY m.date DESC"
     c.execute(base, params)
     rows = c.fetchall()
@@ -523,8 +516,8 @@ def get_expenses(admin_id, search_query="", vehicle_id=None, date_from=None, dat
         params.append(date_to)
     if search_query:
         q = f"%{search_query}%"
-        base += " AND (v.plates LIKE ? OR e.category LIKE ? OR e.concept LIKE ? OR e.observations LIKE ?)"
-        params.extend([q, q, q, q])
+        base += " AND (v.plates LIKE ? OR v.brand LIKE ? OR v.model LIKE ? OR e.driver_name LIKE ? OR e.category LIKE ? OR e.concept LIKE ? OR e.observations LIKE ?)"
+        params.extend([q, q, q, q, q, q, q])
     base += " ORDER BY e.date DESC"
     c.execute(base, params)
     rows = c.fetchall()
@@ -599,8 +592,8 @@ def get_dashboard_stats(admin_id):
 
     c.execute("""
         SELECT COALESCE(SUM(amount), 0) FROM expenses
-        WHERE admin_id = ? AND date >= ?
-    """, (admin_id, month_start))
+        WHERE admin_id = ?
+    """, (admin_id,))
     month_expenses = c.fetchone()[0]
 
     conn.close()

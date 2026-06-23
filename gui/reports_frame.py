@@ -9,6 +9,10 @@ import datetime
 import database
 from tkinter import filedialog, messagebox
 import pdf_generator
+try:
+    from tkcalendar import DateEntry
+except ImportError:
+    DateEntry = None
 
 
 class ReportsFrame(ctk.CTkFrame):
@@ -90,9 +94,19 @@ class ReportsFrame(ctk.CTkFrame):
             font=ctk.CTkFont(size=12),
         ).grid(row=1, column=0, padx=(12, 4), pady=(0, 12), sticky="w")
 
-        self.entry_date_from = ctk.CTkEntry(
-            selector_bar, placeholder_text="DD/MM/AAAA", width=120, height=32)
-        self.entry_date_from.grid(row=1, column=1, padx=(0, 10), pady=(0, 12), sticky="w")
+        self.date_from_var = ctk.StringVar()
+        self.date_from_var.trace_add("write", lambda *a: self._filter_date_chars(self.date_from_var))
+        self.date_to_var = ctk.StringVar()
+        self.date_to_var.trace_add("write", lambda *a: self._filter_date_chars(self.date_to_var))
+
+        if DateEntry:
+            self.entry_date_from = DateEntry(selector_bar, textvariable=self.date_from_var, width=12, background='darkblue', foreground='white', borderwidth=2, date_pattern='dd/mm/yyyy')
+            self.entry_date_from.grid(row=1, column=1, padx=(0, 10), pady=(0, 12), sticky="w")
+            self.entry_date_from.delete(0, 'end')
+        else:
+            self.entry_date_from = ctk.CTkEntry(
+                selector_bar, textvariable=self.date_from_var, placeholder_text="DD/MM/AAAA", width=120, height=32)
+            self.entry_date_from.grid(row=1, column=1, padx=(0, 10), pady=(0, 12), sticky="w")
 
         ctk.CTkLabel(
             selector_bar, text="Hasta:",
@@ -102,9 +116,14 @@ class ReportsFrame(ctk.CTkFrame):
         date_actions = ctk.CTkFrame(selector_bar, fg_color="transparent")
         date_actions.grid(row=1, column=3, padx=(0, 12), pady=(0, 12), sticky="e")
 
-        self.entry_date_to = ctk.CTkEntry(
-            date_actions, placeholder_text="DD/MM/AAAA", width=120, height=32)
-        self.entry_date_to.grid(row=0, column=0, padx=(0, 8))
+        if DateEntry:
+            self.entry_date_to = DateEntry(date_actions, textvariable=self.date_to_var, width=12, background='darkblue', foreground='white', borderwidth=2, date_pattern='dd/mm/yyyy')
+            self.entry_date_to.grid(row=0, column=0, padx=(0, 8))
+            self.entry_date_to.delete(0, 'end')
+        else:
+            self.entry_date_to = ctk.CTkEntry(
+                date_actions, textvariable=self.date_to_var, placeholder_text="DD/MM/AAAA", width=120, height=32)
+            self.entry_date_to.grid(row=0, column=0, padx=(0, 8))
 
         ctk.CTkButton(
             date_actions, text="Filtrar", width=70, height=32,
@@ -179,7 +198,9 @@ class ReportsFrame(ctk.CTkFrame):
 
         if self._current_mode == "vehiculo":
             vehicles = database.get_all_vehicles_for_combo(admin_id)
-            self._vehicle_map = {display: v_id for v_id, display in vehicles}
+            self._vehicle_map = {"[Todos los vehículos]": "all"}
+            for v_id, display in vehicles:
+                self._vehicle_map[display] = v_id
             combo_vals = list(self._vehicle_map.keys())
         else:
             self._driver_list = database.get_drivers_for_report_combo(admin_id)
@@ -218,15 +239,29 @@ class ReportsFrame(ctk.CTkFrame):
     def _on_selection_change(self, value):
         """Se ejecuta cuando el usuario elige un vehículo o conductor."""
         admin_id = self.controller.current_admin_id
-        date_from = self._parse_filter_date(self.entry_date_from.get())
-        date_to = self._parse_filter_date(self.entry_date_to.get())
+        date_from_str = self.entry_date_from.get().strip()
+        date_to_str = self.entry_date_to.get().strip()
+        
+        date_from = self._parse_filter_date(date_from_str)
+        date_to = self._parse_filter_date(date_to_str)
+
+        if date_from_str and not date_from:
+            messagebox.showwarning("Error de fecha", "La fecha 'Desde' tiene un formato inválido. Use DD/MM/AAAA.", parent=self)
+            return
+        if date_to_str and not date_to:
+            messagebox.showwarning("Error de fecha", "La fecha 'Hasta' tiene un formato inválido. Use DD/MM/AAAA.", parent=self)
+            return
+        if date_from and date_to and date_from > date_to:
+            messagebox.showwarning("Fechas incongruentes", "La fecha de inicio ('Desde') debe ser anterior o igual a la fecha de fin ('Hasta').", parent=self)
+            return
 
         if self._current_mode == "vehiculo":
             vehicle_id = self._vehicle_map.get(value)
             if not vehicle_id:
                 self._clear_report()
                 return
-            rows = database.get_expenses(admin_id, vehicle_id=vehicle_id,
+            db_vehicle_id = None if vehicle_id == "all" else vehicle_id
+            rows = database.get_expenses(admin_id, vehicle_id=db_vehicle_id,
                                          date_from=date_from, date_to=date_to)
         else:
             if value not in self._driver_list:
@@ -261,7 +296,7 @@ class ReportsFrame(ctk.CTkFrame):
             w.destroy()
 
         # Headers cambian según el modo
-        if self._current_mode == "vehiculo":
+        if self._current_mode == "vehiculo" and self.combo_select.get() != "[Todos los vehículos]":
             headers = ["Fecha", "Categoría", "Concepto", "Conductor", "Monto"]
         else:
             headers = ["Fecha", "Vehículo", "Categoría", "Concepto", "Monto"]
@@ -332,7 +367,7 @@ class ReportsFrame(ctk.CTkFrame):
         ctk.CTkLabel(rf, text=display_date).grid(
             row=0, column=0, padx=6, pady=6, sticky="w")
 
-        if self._current_mode == "vehiculo":
+        if self._current_mode == "vehiculo" and self.combo_select.get() != "[Todos los vehículos]":
             # Categoría | Concepto | Conductor | Monto
             ctk.CTkLabel(rf, text=cat).grid(
                 row=0, column=1, padx=6, pady=6, sticky="w")
@@ -391,7 +426,8 @@ class ReportsFrame(ctk.CTkFrame):
             if not vehicle_id:
                 messagebox.showwarning("Advertencia", "Vehículo no válido.", parent=self)
                 return
-            rows = database.get_expenses(admin_id, vehicle_id=vehicle_id,
+            db_vehicle_id = None if vehicle_id == "all" else vehicle_id
+            rows = database.get_expenses(admin_id, vehicle_id=db_vehicle_id,
                                          date_from=date_from, date_to=date_to)
         else:
             if selected_value not in self._driver_list:
@@ -433,3 +469,9 @@ class ReportsFrame(ctk.CTkFrame):
             messagebox.showinfo("Éxito", f"Reporte exportado correctamente a:\n{file_path}", parent=self)
         except Exception as e:
             messagebox.showerror("Error", f"Ocurrió un error al generar el PDF:\n{e}", parent=self)
+
+    def _filter_date_chars(self, var):
+        val = var.get()
+        filtered = ''.join(c for c in val if c.isdigit() or c == '/')
+        if val != filtered:
+            var.set(filtered)

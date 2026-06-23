@@ -163,7 +163,7 @@ def generate_report_pdf(filename, mode, selected_name, date_from_db, date_to_db,
     
     # Tabla de gastos
     # Headers cambian según el modo
-    if mode == 'vehiculo':
+    if mode == 'vehiculo' and selected_name != "[Todos los vehículos]":
         headers = ["Fecha", "Categoría", "Concepto", "Conductor", "Monto"]
         # Col widths: Fecha=70, Categoria=90, Concepto=174, Conductor=100, Monto=70 => total 504
         col_widths = [70, 90, 174, 100, 70]
@@ -184,7 +184,7 @@ def generate_report_pdf(filename, mode, selected_name, date_from_db, date_to_db,
         date_disp = format_db_date(r[6])
         amount_disp = f"${r[5]:,.2f}"
         
-        if mode == 'vehiculo':
+        if mode == 'vehiculo' and selected_name != "[Todos los vehículos]":
             driver_disp = r[10] if r[10] else "—"
             row_cells = [
                 Paragraph(date_disp, cell_style),

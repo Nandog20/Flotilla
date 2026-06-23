@@ -49,6 +49,18 @@ def _auto_format_date(var, warn_label, optional=False):
             warn_label.configure(text="❌ Inválida", text_color="#EF4444")
 
 
+def _bind_date_entry_popup_fix(date_entry, parent_dialog):
+    """Evita el conflicto entre grab_set() y el calendario popup de tkcalendar."""
+    def on_popup(event):
+        # Desactivar temporalmente el grab del diálogo
+        parent_dialog.grab_release()
+        # Volver a activar el grab cuando se destruye el popup
+        if hasattr(event.widget, "_top_cal"):
+            event.widget._top_cal.bind("<Destroy>", lambda e: parent_dialog.grab_set())
+            
+    date_entry.bind("<<DateEntryPopup>>", on_popup)
+
+
 # =====================================================================
 #  DIÁLOGO DE VEHÍCULO
 # =====================================================================
@@ -109,6 +121,14 @@ class VehicleDialog(ctk.CTkToplevel):
                 self.lbl_vin_warn = ctk.CTkLabel(frame_vin, text="", font=ctk.CTkFont(size=11, weight="bold"))
                 self.lbl_vin_warn.grid(row=0, column=1, padx=(5, 0))
                 self.vin_var.trace_add("write", self._validate_vin)
+            elif attr == "entry_plates":
+                entry = ctk.CTkEntry(self, placeholder_text=ph)
+                entry.grid(row=i, column=1, padx=30, pady=7, sticky="ew")
+                setattr(self, attr, entry)
+                
+                self.plates_var = ctk.StringVar()
+                entry.configure(textvariable=self.plates_var)
+                self.plates_var.trace_add("write", self._validate_plates)
             else:
                 entry = ctk.CTkEntry(self, placeholder_text=ph)
                 entry.grid(row=i, column=1, padx=30, pady=7, sticky="ew")
@@ -184,6 +204,14 @@ class VehicleDialog(ctk.CTkToplevel):
             self.lbl_vin_warn.configure(text="⚠️ Incompleto", text_color="#F59E0B")
         else:
             self.lbl_vin_warn.configure(text="✅", text_color="#10B981")
+
+    def _validate_plates(self, *args):
+        val = self.plates_var.get()
+        uppercased = val.upper()
+        if len(uppercased) > 7:
+            uppercased = uppercased[:7]
+        if val != uppercased:
+            self.plates_var.set(uppercased)
 
     def _save(self):
         brand = self.entry_brand.get().strip()
@@ -502,6 +530,7 @@ class MaintenanceDialog(ctk.CTkToplevel):
         if DateEntry:
             self.entry_date = DateEntry(self, width=12, background='darkblue', foreground='white', borderwidth=2, date_pattern='dd/mm/yyyy')
             self.entry_date.grid(row=2, column=1, padx=30, pady=7, sticky="ew")
+            _bind_date_entry_popup_fix(self.entry_date, self)
         else:
             frame_date = ctk.CTkFrame(self, fg_color="transparent")
             frame_date.grid(row=2, column=1, padx=30, pady=7, sticky="ew")
@@ -527,6 +556,7 @@ class MaintenanceDialog(ctk.CTkToplevel):
             self.entry_end_date = DateEntry(self, width=12, background='darkblue', foreground='white', borderwidth=2, date_pattern='dd/mm/yyyy')
             self.entry_end_date.grid(row=3, column=1, padx=30, pady=7, sticky="ew")
             self.entry_end_date.delete(0, 'end') # Start empty since it's optional
+            _bind_date_entry_popup_fix(self.entry_end_date, self)
         else:
             frame_end_date = ctk.CTkFrame(self, fg_color="transparent")
             frame_end_date.grid(row=3, column=1, padx=30, pady=7, sticky="ew")
@@ -768,6 +798,7 @@ class ExpenseDialog(ctk.CTkToplevel):
         if DateEntry:
             self.entry_date = DateEntry(self, width=12, background='darkblue', foreground='white', borderwidth=2, date_pattern='dd/mm/yyyy')
             self.entry_date.grid(row=5, column=1, padx=30, pady=7, sticky="ew")
+            _bind_date_entry_popup_fix(self.entry_date, self)
         else:
             frame_date = ctk.CTkFrame(self, fg_color="transparent")
             frame_date.grid(row=5, column=1, padx=30, pady=7, sticky="ew")
