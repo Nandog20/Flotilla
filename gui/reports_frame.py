@@ -306,7 +306,7 @@ class ReportsFrame(ctk.CTkFrame):
             self.table_scroll, fg_color=("gray85", "gray20"), corner_radius=6)
         hf.pack(fill="x", pady=(0, 4))
         for i in range(len(headers)):
-            hf.grid_columnconfigure(i, weight=1)
+            hf.grid_columnconfigure(i, weight=1, uniform="rep_cols")
         for i, h in enumerate(headers):
             ctk.CTkLabel(hf, text=h, font=ctk.CTkFont(weight="bold")).grid(
                 row=0, column=i, padx=6, pady=8, sticky="w")
@@ -331,7 +331,7 @@ class ReportsFrame(ctk.CTkFrame):
             self.table_scroll, fg_color=("#D1FAE5", "#064E3B"), corner_radius=6)
         tf.pack(fill="x", pady=(6, 0))
         for i in range(len(headers)):
-            tf.grid_columnconfigure(i, weight=1)
+            tf.grid_columnconfigure(i, weight=1, uniform="rep_cols")
 
         ctk.CTkLabel(
             tf, text="TOTAL",
@@ -357,7 +357,7 @@ class ReportsFrame(ctk.CTkFrame):
             num_cols = 5
 
         for i in range(num_cols):
-            rf.grid_columnconfigure(i, weight=1)
+            rf.grid_columnconfigure(i, weight=1, uniform="rep_cols")
 
         # Fecha
         try:

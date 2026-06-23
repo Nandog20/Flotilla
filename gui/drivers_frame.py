@@ -102,7 +102,7 @@ class DriversFrame(ctk.CTkFrame):
             self.table_scroll, fg_color=("gray85", "gray20"), corner_radius=6)
         frame.pack(fill="x", pady=(0, 4))
         for i in range(len(headers)):
-            frame.grid_columnconfigure(i, weight=2 if i < 6 else 1)
+            frame.grid_columnconfigure(i, weight=2 if i < 6 else 1, uniform="drv_cols")
         for i, h in enumerate(headers):
             ctk.CTkLabel(frame, text=h, font=ctk.CTkFont(weight="bold")).grid(
                 row=0, column=i, padx=6, pady=8, sticky="w")
@@ -111,7 +111,7 @@ class DriversFrame(ctk.CTkFrame):
         rf = ctk.CTkFrame(self.table_scroll, fg_color=bg, corner_radius=4)
         rf.pack(fill="x", pady=1)
         for i in range(7):
-            rf.grid_columnconfigure(i, weight=2 if i < 6 else 1)
+            rf.grid_columnconfigure(i, weight=2 if i < 6 else 1, uniform="drv_cols")
 
         ctk.CTkLabel(
             rf, text=name, font=ctk.CTkFont(weight="bold"),

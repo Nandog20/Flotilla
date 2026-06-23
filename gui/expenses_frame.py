@@ -180,7 +180,7 @@ class ExpensesFrame(ctk.CTkFrame):
             self.table_scroll, fg_color=("#D1FAE5", "#064E3B"), corner_radius=6)
         tf.pack(fill="x", pady=(6, 0))
         for i in range(len(headers)):
-            tf.grid_columnconfigure(i, weight=1 if i < 6 else 0)
+            tf.grid_columnconfigure(i, weight=1 if i < 6 else 0, uniform="exp_cols")
 
         ctk.CTkLabel(
             tf, text="TOTAL",
@@ -197,7 +197,7 @@ class ExpensesFrame(ctk.CTkFrame):
         frame = ctk.CTkFrame(self.table_scroll, fg_color=("gray85", "gray20"), corner_radius=6)
         frame.pack(fill="x", pady=(0, 4))
         for i in range(len(headers)):
-            frame.grid_columnconfigure(i, weight=1 if i < 6 else 0)
+            frame.grid_columnconfigure(i, weight=1 if i < 6 else 0, uniform="exp_cols")
         for i, h in enumerate(headers):
             ctk.CTkLabel(frame, text=h, font=ctk.CTkFont(weight="bold")).grid(
                 row=0, column=i, padx=6, pady=8, sticky="w")
@@ -207,7 +207,7 @@ class ExpensesFrame(ctk.CTkFrame):
         rf = ctk.CTkFrame(self.table_scroll, fg_color=bg, corner_radius=4)
         rf.pack(fill="x", pady=1)
         for i in range(7):
-            rf.grid_columnconfigure(i, weight=1 if i < 6 else 0)
+            rf.grid_columnconfigure(i, weight=1 if i < 6 else 0, uniform="exp_cols")
 
         vehicle_str = f"{plates} - {v_name}"
         ctk.CTkLabel(rf, text=vehicle_str, font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, padx=6, pady=6, sticky="w")
